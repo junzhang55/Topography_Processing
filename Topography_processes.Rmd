@@ -12,12 +12,22 @@ Calculations are done on Cyverse with files temporarily transferred into Rstudio
 rm(list=ls())
 #here are all the directories will be sepecified in the code
 #func_dir="/Users/junzhang/Documents/Topography/R_codes/Jun_test/functions/Github" #where you store all the functions to be used
-#input_local="/Users/junzhang/Documents/Topography/CONUS2.0" #where you store all the input files, dem, mask, etc.
 #outdir="/Users/junzhang/Documents/Topography/R_codes/Jun_test/outputs/github_funcs" # store output files
+
+#if you are reading data directly from local computer
+#localdir="/Users/junzhang/Documents/Topography/CONUS2.0/iget_data" #where you store all the input files, dem, mask, etc.
+
+#if you are reading from Avra
+domain_idir="/iplant/home/shared/avra/CONUS2.0/Inputs/domain/" #file locations of domain data in avra
+NWM_idir="/iplant/home/shared/avra/CONUS2.0/Inputs/NWM_Files/Upscaled_Files"#file locations of NWM data in avra
+localdir="/Users/junzhang/Documents/Topography/CONUS2.0/iget_data"#the local directory you want to store the data from avra
+domain_local=paste(localdir,'domain',sep="/") #the local directory for the domain data
+NWM_local=paste(localdir,'NWM_files',sep="/") #the local directory for the NWM data
 
 func_dir="C:/Users/Jun/A_Jun/mac_backup/Topography/R_codes/Jun_test/functions/Github"
 input_local="C:/Users/Jun/A_Jun/mac_backup/Topography/CONUS2.0"
 outdir="C:/Users/Jun/A_Jun/mac_backup/Topography/R_codes/Jun_test/outputs/github_funcs"
+
 ```
 
 ##thresholds and river network used in different scenarios
@@ -39,7 +49,6 @@ RunName=paste("Str",riverorder,"LakSink_Ep",ep,"_",sep="")#run name for PF files
 RunNameQGIS=paste("HSProc_Stream",riverorder,sep="")#runname for QGIS outs
 #RunName="HSProc_Stream5"
 ```
-
 
 ##load all the packages and functions used for calculation
 ```{r setup}
@@ -65,7 +74,23 @@ source("./functions/Slope_Calc_Upwind.R")
 ##including dem, mask, channel, border, lake borders, lake mask, sink masks
 ## makes the rasters to matrices and pre-process of the matrices 
 ```{r, read all the input files}
-setwd(input_local)
+#download the data from avra
+mask_idir=paste(domain_idir,'conus_1km_PFmask2.tif',sep="/")
+borderR_idir=paste(domain_idir,'1km_PF_BorderCells2.tif',sep="/")
+Lborder_idir=paste(domain_idir,'conus_1km_PFmask_selectLakesborder.tif',sep="/")
+lakesR_idir=paste(domain_idir,'conus_1km_PFmask_selectLakesmask.tif',sep="/")
+sinkR_idir=paste(domain_idir,'conus_1km_PFmask_manualsinks.tif',sep="/")
+demR_idir=paste(NWM_idir,'1km_upscaledNWM_DEMmin2.tif',sep="/")
+channelR_idir=paste(NWM_idir,'1km_upscaledNWM_ChannelOrder5_mod2.tif',sep="/")
+system(paste('iget -KrfP', mask_idir, domain_local, sep=" "))
+system(paste('iget -KrfP', borderR_idir, domain_local, sep=" "))
+system(paste('iget -KrfP', Lborder_idir, domain_local, sep=" "))
+system(paste('iget -KrfP', lakesR_idir, domain_local, sep=" "))
+system(paste('iget -KrfP', sinkR_idir, domain_local, sep=" "))
+system(paste('iget -KrfP', demR_idir, NWM_local, sep=" "))
+system(paste('iget -KrfP', channelR_idir, NWM_local, sep=" "))
+
+setwd(local_dir)
 #Read in the stream order file and the Grid mask
 maskR=raster("./Domain/conus_1km_PFmask2.tif")
 #channelR=raster("./MyLayers/1km_upscaledNWM_ChannelOrder5_mod.tif")
