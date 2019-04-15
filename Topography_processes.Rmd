@@ -11,11 +11,11 @@ Calculations are done on Cyverse with files temporarily transferred into Rstudio
 ```{r identify all the directories}
 rm(list=ls())
 #here are all the directories will be sepecified in the code
-#func_dir="/Users/junzhang/Documents/Topography/R_codes/Jun_test/functions/Github" #where you store all the functions to be used
-#outdir="/Users/junzhang/Documents/Topography/R_codes/Jun_test/outputs/github_funcs" # store output files
+func_dir="/Users/junzhang/Documents/Topography/R_codes/Jun_test/functions/Github" #where you store all the functions to be used
+outdir="/Users/junzhang/Documents/Topography/R_codes/Jun_test/outputs/github_funcs" # store output files
 
 #if you are reading data directly from local computer
-#localdir="/Users/junzhang/Documents/Topography/CONUS2.0/iget_data" #where you store all the input files, dem, mask, etc.
+localdir="/Users/junzhang/Documents/Topography/CONUS2.0/iget_data" #where you store all the input files, dem, mask, etc.
 
 #if you are reading from Avra
 domain_idir="/iplant/home/shared/avra/CONUS2.0/Inputs/domain/" #file locations of domain data in avra
@@ -23,11 +23,6 @@ NWM_idir="/iplant/home/shared/avra/CONUS2.0/Inputs/NWM_Files/Upscaled_Files"#fil
 localdir="/Users/junzhang/Documents/Topography/CONUS2.0/iget_data"#the local directory you want to store the data from avra
 domain_local=paste(localdir,'domain',sep="/") #the local directory for the domain data
 NWM_local=paste(localdir,'NWM_files',sep="/") #the local directory for the NWM data
-
-func_dir="C:/Users/Jun/A_Jun/mac_backup/Topography/R_codes/Jun_test/functions/Github"
-input_local="C:/Users/Jun/A_Jun/mac_backup/Topography/CONUS2.0"
-outdir="C:/Users/Jun/A_Jun/mac_backup/Topography/R_codes/Jun_test/outputs/github_funcs"
-
 ```
 
 ##thresholds and river network used in different scenarios
