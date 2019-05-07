@@ -32,13 +32,13 @@ ep=0 #Epsilon - value to be added if adjacent cells have the same elvation
 dx=dy=1000
 
 #  choose river network file
-riverorder=3
+riverorder=5
 if (riverorder==5){ riverfile="1km_upscaledNWM_ChannelOrder5_mod2.tif"} 
 if (riverorder==3){ riverfile="1km_upscaledNWM_ChannelOrder3_mod.tif"}
 RiverfileLoc=paste(input_local,"/NWM_files/",riverfile,sep="")
 
 #specify the run name
-FolderName=paste("Str",riverorder,"Ep",ep,"2",sep="")#run name for PF files
+FolderName=paste("Str",riverorder,"Ep",ep,sep="")#run name for PF files
 
 # RunNameQGIS=paste("HSProc_Stream",riverorder,sep="")#runname for QGIS outs
 
@@ -353,8 +353,8 @@ write.table(channelPF, fout, append=T, row.names=F, col.names=F)
 ```{r, calculate the drainage area}
 
 MaxSlope=0.5
-MinSlope=1e-03
-SecTH=0
+MinSlope=1e-05
+SecTH=-1
 
 SlopeName=paste(FolderName,"_unsmth.","mx",MaxSlope,".mn",-log10(MinSlope),".sec",SecTH,".up",sep="")#slope names 
 
@@ -379,7 +379,6 @@ area=drainageArea(slopesUW$direction, printflag=F)
 ```{r write the outputs}
 setwd(outdir)
 
-#write out in PF format
 slopex=slopey=rep(0, nx*ny)
 jj=1
 for(j in 1:ny){
