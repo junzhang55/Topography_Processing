@@ -1,7 +1,4 @@
 # Topography_processing
-
-the following files are contained in this folder:
-
 Inside the folder: 
 - Functions: all functions used in topography processing
 - .rmd: r markdown script for this specific process, should be able to run by changing the input files paths.
