@@ -1,7 +1,4 @@
 # Topography_processing
-
-the following files are contained in this folder:
-
 Inside the folder: 
 - Functions: all functions used in topography processing
 - .rmd: r markdown script for this specific process, should be able to run by changing the input files paths.
@@ -14,7 +11,7 @@ Options in the topography processing:
   - MinSlope: Minimum slope threshold
   - SecTH: Maximum ratio of secondary to primary slopes. If 0, then all secondary slopes are zero, if -1 then secondary slopes were not limited at all.
   - upwind: slopes were adjusted to reflect upwinding (i.e. upflag=T in the slope function), stan means all slopes are calculated as i+1-I (i.e. upflag=F)
-  - All the input files are stored in Avra, the paths can be found in the r markdown file.
+  - All the input files are supposed to be stored in local computer. If you don't have them in locally, please download the data, the downloading steps are described in the r markdown file.
 
 File Description for processed Topography Outputs:
     - area(drainageArea): the drainage area of each cell
