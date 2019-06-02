@@ -1,6 +1,9 @@
 ---
 title: "Topography processing"
-output: html_notebook
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
 ---
 
 This script does the topographical processes and produces outputs include area, drainage area, basin division, slopes, mask, marked, etc.
@@ -67,8 +70,8 @@ This slopeparameters part of the name reflect the slope processing choices that 
 ```{r options for topography processes}
 rm(list=ls())
 UserWD="/Users/junzhang/Documents/Topography/R_codes/Topo_process" #Specify user directory
-knitr::opts_knit$set(root.dir=UserWD)
-# setwd(UserWD)
+# knitr::opts_knit$set(root.dir=UserWD)
+setwd(UserWD)
 
 GitUpdate=F #Whether function folder needed to be updated.T means to update.
 UploadFlag=F #Whether to upload results to Avra. T means to upload.
