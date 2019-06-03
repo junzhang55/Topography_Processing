@@ -267,7 +267,7 @@ if (!dir.exists(FolderName)){
 ###Write out .tif files
 outfolder=paste(UserWD,"/",FolderName,sep="")
 knitr::opts_knit$set(root.dir=UserWD)
-# setwd(FolderName)
+setwd(FolderName)
 #Step
 temprast=maskR
 values(temprast)=t(travHS$step[, ny:1])
