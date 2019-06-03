@@ -69,8 +69,9 @@ This slopeparameters part of the name reflect the slope processing choices that 
 ```{r options for topography processes}
 rm(list=ls())
 UserWD="/Users/junzhang/Documents/Topography/R_codes/Topo_process" #Specify user directory
-knitr::opts_knit$set(root.dir=UserWD,errot=T)
-knitr::opts_chunk$set(echo=FALSE, results='hide', fig.keep='none')
+knitr::opts_knit$set(root.dir=UserWD,error=T)
+knitr::opts_chunk$set(results='hide')
+# knitr::opts_chunk$set(echo=FALSE, results='hide', fig.keep='none')
 # setwd(UserWD)
 
 GitUpdate=F #Whether function folder needed to be updated.T means to update.
@@ -85,15 +86,15 @@ dx=dy=1000 #the grid size
 d4=c(1,2,3,4) #D4 numbering. Numbers to assign to flow directions ordered, down, left, top, right.
 
 SecTH=-1
-# SecTH=cbind(-1,0,0.5)#Maximum ratio of secondary to primary slopes. If 0, then all secondary slopes are zero, if -1 then secondary slopes were not limited at all.
+# SecTH=c(-1,0,0.5)#Maximum ratio of secondary to primary slopes. If 0, then all secondary slopes are zero, if -1 then secondary slopes were not limited at all.
 UpwindFlag=T
 # UpwindFlag=cbind(T,F) #slopes were adjusted to reflect upwinding (i.e. upflag=T in the slope function), stan means all slopes are calculated as i+1-I (i.e. upflag=F)
-MaxSlope=cbind(0.5) #Maximum slope threshold
-MinSlope=cbind(1e-05) #Minimum slope threshold
+MaxSlope=c(0.5) #Maximum slope threshold
+MinSlope=c(1e-05) #Minimum slope threshold
 
 SmthFlag=F #Whether the river networks are smoothed.
 river_method=3 #0,1,2,3
-sub_th=cbind(500,1500) #threshold for the drainage area minimum used desigate cells as river cells. Important: if SmthFlag is F, this value will not be used, but it must have a value.
+sub_th=c(500,1500) #threshold for the drainage area minimum used desigate cells as river cells. Important: if SmthFlag is F, this value will not be used, but it must have a value.
 mrg_th=10
 ```
 ## Check if the input data exist.
