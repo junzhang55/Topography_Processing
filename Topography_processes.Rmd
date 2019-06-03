@@ -1,9 +1,9 @@
 ---
 title: "Topography processing"
 output:
-  pdf_document: default
   html_document:
     df_print: paged
+  pdf_document: default
 ---
 
 This script does the topographical processes and produces outputs include area, drainage area, basin division, slopes, mask, marked, etc.
@@ -27,8 +27,7 @@ __User specification__
   + MinSlope: Minimum slope threshold
   + SecTH: Maximum ratio of secondary to primary slopes. If 0, then all secondary slopes are zero, if -1 then secondary slopes were not limited at all.
   + UpwindFlag:T/F, slopes were adjusted to reflect upwinding (i.e. upflag=T in the slope function), stan means all slopes are calculated as i+1-I (i.e. upflag=F)
-
-  options for smoothing river:
+__options for smoothing river:__
   + SmthFlag: T/F, T means the river channel are smoothed.
   + river_method: for river smoothing. Optional method to treat river cells differently from the rest of the domain.
     + 0: default value, no special treatment for river cells
@@ -70,8 +69,9 @@ This slopeparameters part of the name reflect the slope processing choices that 
 ```{r options for topography processes}
 rm(list=ls())
 UserWD="/Users/junzhang/Documents/Topography/R_codes/Topo_process" #Specify user directory
-# knitr::opts_knit$set(root.dir=UserWD)
-setwd(UserWD)
+knitr::opts_knit$set(root.dir=UserWD,errot=T)
+knitr::opts_chunk$set(echo=FALSE, results='hide', fig.keep='none')
+# setwd(UserWD)
 
 GitUpdate=F #Whether function folder needed to be updated.T means to update.
 UploadFlag=F #Whether to upload results to Avra. T means to upload.
@@ -97,7 +97,7 @@ sub_th=cbind(500,1500) #threshold for the drainage area minimum used desigate ce
 mrg_th=10
 ```
 ## Check if the input data exist.
-```{r }
+```{r}
 Sys.setenv(PATH='/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/Applications/icommands')
 Sys.setenv(IRODS_PLUGINS_HOME="/Applications/icommands/plugins/")
 
@@ -114,7 +114,7 @@ if (!dir.exists("./Upscaled_Files")){
   system(paste('iget -K -P -b -r -T /iplant/home/shared/avra/CONUS2.0/Inputs/NWM_Files/Upscaled_Files .'))
 }
 ```
-##Check if all the lirbaries have been installed. If not, install first and library them.
+##Check if all the libraries have been installed. If not, install first and library them.
 ```{r}
 ReqPackages=c('fields','raster','sp','rgdal','devtools')
 for(i in (1:length(ReqPackages))){
@@ -131,21 +131,6 @@ for(i in (1:length(ReqPackages))){
 ```{r}
 install_github("lecondon/PriorityFlow", subdir="Rpkg")
 library('PriorityFlow')
-
-# if (!dir.exists("./PriorityFlow/functions")){
-#   system(paste('git clone https://github.com/lecondon/PriorityFlow'))
-# }
-# if (GitUpdate==T){
-#   system(paste('git pull https://github.com/lecondon/PriorityFlow'))
-# }
-# source("./PriorityFlow/functions/D4_Traverse.R")
-# source("./PriorityFlow/functions/Init_Queue.R")
-# source("./PriorityFlow/functions/Stream_Traverse.R")
-# source("./PriorityFlow/functions/Find_Orphan.R")
-# source("./PriorityFlow/functions/drainage_area.R")
-# # source("./PriorityFlow/functions/Slope_Calc.R")
-# source("./PriorityFlow/functions/Slope_Calc_Upwind.R")
-# source("./PriorityFlow/functions/Define_Subbasins.R")
 ```
 #2. Read all the input files
 ```{r, read all the input files}
@@ -211,7 +196,7 @@ SborderT[sinklist]=1
 
 ```
 #3. Topographic processing
-```{r}
+```{r, topographic processing}
 ##Add lakes and sinks to border
 AllBord=borderT+LborderT +SborderT
 Bord4Dir=bordertypeT+LborderT+SborderT
@@ -408,8 +393,8 @@ if (WriteAscII==T){
 }
 ```
 #4. Calculate the slope and drainage area
-```{r}
-# setwd(FolderName)
+```{r, calculate the slope and drainage area}
+setwd(FolderName)
 
 for(maxi in 1:length(MaxSlope)){
   MaxStem=MaxSlope[maxi]
@@ -576,16 +561,6 @@ for(maxi in 1:length(MaxSlope)){
   }#end min
 }#end max
 
-##Generate conversion tcl script for changing slopes.sa to .pfb and .silo
-# system(paste("cp File_Conversion.tcl",FolderName,sep=" "))
-# setwd(FolderName)
-# ConverTxt=readLines('File_Conversion.tcl')
-#
-# SlopexName=paste(SlopeName, "_slopex", sep="")
-# SlopeyName=paste(SlopeName, "_slopey", sep="")
-# ConverTxt2=gsub("Inputnamex", SlopexName, ConverTxt)
-# ConverTxt2=gsub("Inputnamey", SlopeyName, ConverTxt2)
-# writeLines(ConverTxt2, con="File_Conversion2.tcl")
 ```
 
 #5. Upload files to Avra if the upload flag is true
