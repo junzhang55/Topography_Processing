@@ -1,0 +1,648 @@
+---
+title: "Topography processing"
+output: html_notebook
+---
+
+This script does the topographical processes and produces outputs include area, drainage area, basin division, slopes, mask, marked, etc. 
+Calculations are done on Cyverse with files temporarily transferred into Rstudio and saved out to Avra.
+
+__User specification__
+
+1. __Choices should be specified by user__:
+  + UserWD: The working directory for topography proceesses. Should be specified by user.
+  + GitUpdate: T/F, T means the function repo needs to be updated.
+  + UploadFlag: T/F, T means the results will be uploaded to Avra.
+  + PlotFlag:T/F, T means to plot outputs in .png format and stored in a folder called 'Figures'
+  + WriteTiff:T/F,, T means to save Tiff files of outputs, the default projection system is Lambert Conformal Conic (2SP).
+  + WriteAscII:T/F, T means to save files in Parflow ascii format
+2. __Choices for elevation correction and river network__  
+  + ep: Epsilon - value to be added if adjacent cells have the same elvation
+  + riverorder: River network to be used, can be 3 or 5. 3 means river network of order 3 will be used.
+  + dx/dy: The spatial resolution. The current resolution is 1000m.
+3. __Choices for slope calculation__. If mutiple choices are assigned, all combinations will be processed thoroughly with particular names. 
+  + MaxSlope: Maximum slope threshold
+  + MinSlope: Minimum slope threshold
+  + SecTH: Maximum ratio of secondary to primary slopes. If 0, then all secondary slopes are zero, if -1 then secondary slopes were not limited at all.
+  + UpwindFlag:T/F, slopes were adjusted to reflect upwinding (i.e. upflag=T in the slope function), stan means all slopes are calculated as i+1-I (i.e. upflag=F)
+  
+  __options for smoothing river__:
+  + SmthFlag: T/F, T means the river channel are smoothed.
+  + river_method: for river smoothing. Optional method to treat river cells differently from the rest of the domain.
+    + 0: default value, no special treatment for river cells
+    + 1: Scale secondary slopes to zero along the river (requries river mask)
+    + 2: Apply watershed mean slope to each river reach (requires river mask and subbasins)
+    + 3: Apply the stream mean slope to each reach (requires river mask and subbasins)
+    NOTE: the river mask can be different from the rivers that were used to create the subbasins if desired (i.e. if you want to use a threshold of 100 to create subbasins but then apply to river cells with a threshold of 50)
+  + sub_th: threshold for the drainage area minimum used desigate cells as river cells, defaults to 50
+  + merge_th: After all the subbasins have been defined, subbasins with areas lower than merg_th will be combined with their downstream neighbors (Defaults to 0 which means no merging will take place)
+
+__Input Data__
+
+1. There are two folders containing input data: __./domain__ and __./Upscaled_Files__. If the folders cannot be found, they will be downloaded from Avra automatically.
+2. In order to use icommands to download input data:
+    * Apply for a Cyverse account
+    * Have icommands installed and initilised on your computer. More information can be found: https://wiki.cyverse.org/wiki/display/DS/Setting+Up+iCommands.
+
+__Functions__
+
+The functions should be stored in the folder __./PriorityFlow/functions__. If not existed, will be cloned the up-to-date functions from https://github.com/lecondon/PriorityFlow.
+
+__Outputs Naming__
+
+All Topographic processing outputs will be named with a processing description that reflects the choices that were made in the PriorityFlow DEM correction step followed by the output file type (e.g. area, subbasin, direction). 
+Processing descriptions reflects the choice of river order and epsilon value. For example:
+  
+  Str5ep0_area.tif
+
+Slope files have an additional ‘slopeparameter’ name component as follows:
+
+	Processingdescription_slopeparameters_slopex.pfb 
+	Processingdescription_slopeparameters_slopey.pfb
+	
+This slopeparameters part of the name reflect the slope processing choices that were made. For example:
+
+  Str5ep0_unsmth.mx0.5.mn5.sec0.up_slopex.pfb
+
+#1. Initial settings and checks for functions and input data
+```{r options for topography processes}
+rm(list=ls())
+UserWD="/Users/junzhang/Documents/Topography/R_codes/Topo_process" #Specify user directory
+setwd(UserWD)
+
+# GitUpdate=F #Whether function folder needed to be updated.T means to update.
+UploadFlag=F #Whether to upload results to Avra. T means to upload.
+PlotFlag=T # Whether to plot outputs in .png format and stored in a folder
+WriteTiff=F # Whether save Tiff files and stored in a folder
+WriteAscII=T # Whether to save files in Parflow ascii format and stored in a folder
+
+ep=0 #Epsilon - value to be added if adjacent cells have the same elvation
+riverorder=5 #River network to be used, can choose from 3 or 5. 3 means river network of order 3 will be used.
+dx=dy=1000 #the grid size
+d4=c(1,2,3,4) #D4 numbering. Numbers to assign to flow directions ordered, down, left, top, right.
+
+# SecTH=c(-1,0,0.5)
+SecTH=c(0)#Maximum ratio of secondary to primary slopes. If 0, then all secondary slopes are zero, if -1 then secondary slopes were not limited at all.
+# UpwindFlag=c(T,F)
+UpwindFlag=T #slopes were adjusted to reflect upwinding (i.e. upflag=T in the slope function), stan means all slopes are calculated as i+1-I (i.e. upflag=F)
+MaxSlope=c(0.5) #Maximum slope threshold
+MinSlope=c(1e-05) #Minimum slope threshold
+
+SmthFlag=F #Whether the river networks are smoothed.
+river_method=3 #0,1,2,3
+# sub_th=c(500,1500)
+sub_th=c(500) #threshold for the drainage area minimum used desigate cells as river cells. Important: if SmthFlag is F, this value will not be used, but it must have a value.
+mrg_th=10 
+
+clipflag=T #whether to process in a subdomain
+ClippingMask="UpperCO_mask.tif"
+```
+## Check if the input data exist. 
+```{r }
+Sys.setenv(PATH='/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/Applications/icommands')
+Sys.setenv(IRODS_PLUGINS_HOME="/Applications/icommands/plugins/")
+
+if (!dir.exists("./domain")){
+  dir.create("domain")
+  system(paste('iget -K -P -b -r -T /iplant/home/shared/avra/CONUS2.0/Inputs/domain/conus_1km_PFmask2.tif ./domain'))
+  system(paste('iget -K -P -b -r -T /iplant/home/shared/avra/CONUS2.0/Inputs/domain/conus_1km_PFmask_selectLakesborder.tif ./domain'))
+  system(paste('iget -K -P -b -r -T /iplant/home/shared/avra/CONUS2.0/Inputs/domain/conus_1km_PFmask_selectLakesmask.tif ./domain'))
+  system(paste('iget -K -P -b -r -T /iplant/home/shared/avra/CONUS2.0/Inputs/domain/conus_1km_PFmask_manualsinks.tif ./domain'))
+  system(paste('iget -K -P -b -r -T /iplant/home/shared/avra/CONUS2.0/Inputs/domain/1km_PF_BorderCells_Type.tif ./domain'))
+  system(paste('iget -K -P -b -r -T /iplant/home/shared/avra/CONUS2.0/Inputs/domain/1km_PF_BorderCells2.tif ./domain'))
+}
+if (!dir.exists("./Upscaled_Files")){
+  system(paste('iget -K -P -b -r -T /iplant/home/shared/avra/CONUS2.0/Inputs/NWM_Files/Upscaled_Files .'))
+}
+```
+##Check if all the lirbaries have been installed. If not, install first and library them.
+```{r}
+ReqPackages=c('fields','raster','sp','rgdal','devtools')
+for(i in (1:length(ReqPackages))){
+  packtem=ReqPackages[i]
+         if(packtem %in% rownames(installed.packages())){
+          do.call('library', list(packtem))
+       }else{
+          install.packages(packtem)
+          do.call("library", list(packtem))
+       }
+}
+```
+##Check if the functions have been downloaded and source all the functions.
+```{r}
+install_github("lecondon/PriorityFlow", subdir="Rpkg")
+library('PriorityFlow')
+```
+#2. Read all the input files 
+```{r, read all the input files}
+maskR=raster("./domain/conus_1km_PFmask2.tif")
+borderR=raster("./domain/1km_PF_BorderCells2.tif")
+demR=raster("./Upscaled_Files/1kmPF_upscaledNWM_DEMmin2.tif")
+LborderR=raster("./domain/conus_1km_PFmask_selectLakesborder.tif") 
+lakesR=raster("./domain/conus_1km_PFmask_selectLakesmask.tif") 
+sinksR=raster("./domain/conus_1km_PFmask_manualsinks.tif") 
+bordertypeR=raster("./domain/1km_PF_BorderCells_Type.tif")
+
+##Choose river network file
+if (riverorder==5){ riverfile="1km_upscaledNWM_ChannelOrder5_mod2.tif"} 
+if (riverorder==3){ riverfile="1km_upscaledNWM_ChannelOrder3_mod.tif"}
+RiverfileLoc=paste("./Upscaled_Files/",riverfile,sep="")
+channelR=raster(RiverfileLoc)
+
+##Crop the channels from the NWM extent to the PF extent
+channelRc=crop(channelR, extent(channelR,334,3589,97,4538))
+
+##Make the rasters into matrices
+channel=as.matrix(channelRc)
+mask=as.matrix(maskR)
+border=as.matrix(borderR)
+Lborder=as.matrix(LborderR)
+lakes=as.matrix(lakesR)
+dem=as.matrix(demR)
+sinks=as.matrix(sinksR)
+bordertype=as.matrix(bordertypeR)
+
+##Mask out the channel cells outside the domain
+channelm=channel*mask
+
+##Mask out the channel cells that fall inside lakes
+lakeind=which(lakes==1)
+channelm[lakeind]=0
+
+##Transform so [i,j] indexing works directly as x and y location 
+ny=nrow(channelm)
+nx=ncol(channelm)
+channelmT=t(channelm[ny:1,])
+demT=t(dem[ny:1,])
+borderT=t(border[ny:1,])
+LborderT=t(Lborder[ny:1,])
+lakesT=t(lakes[ny:1,])
+maskT=t(mask[ny:1,])
+sinksT=t(sinks[ny:1,])
+bordertypeT=t(bordertype[ny:1,])
+
+##Make a mask with the lakes removed by combinig the lake coverage with the domain mask
+
+lakeindT=which(lakesT==1)
+LakemaskT=maskT
+LakemaskT[lakeindT]=0
+
+##Make a mask of sinks (i.e. cells with a value of 2 in the sink raster)
+###Note the sinks are just single cells so for processing treat them just like a border cell
+sinklist=which(sinksT==2)
+nsink=length(sinklist)
+SborderT=sinksT
+SborderT[]=0
+SborderT[sinklist]=1
+
+##the reason to add buffer to lake and sink1 is to make sure the mask is the same with the one that we are using for the run. The domain files for these two mask were clipped by Hoang's old srcipt. The updated script now has no buffer. 
+if (clipflag==T){
+  ##Clipping a subdomain
+  ClipmaskR=raster(ClippingMask)
+  Clipmask=as.matrix(ClipmaskR)
+  ClipmaskT=t(Clipmask[ny:1,])
+  
+  channelmT=channelmT*ClipmaskT
+  demT=demT*ClipmaskT
+  borderT=borderT*ClipmaskT
+  LborderT=LborderT*ClipmaskT
+  lakesT=lakesT*ClipmaskT
+  maskT=maskT*ClipmaskT
+  sinksT=sinksT*ClipmaskT
+  bordertypeT=bordertypeT*ClipmaskT
+  LakemaskT=LakemaskT*ClipmaskT
+  SborderT=SborderT*ClipmaskT
+
+  MaskLoc=which(ClipmaskT==1,arr.ind=T)
+  MaskRowmin=min(MaskLoc[,1])
+  MaskRowmax=max(MaskLoc[,1])
+  MaskColmin=min(MaskLoc[,2])
+  MaskColmax=max(MaskLoc[,2])
+  nx=MaskRowmax-MaskRowmin+1
+  ny=MaskColmax-MaskColmin+1
+    if (ClippingMask=="InternalLake1_mask.tif" | ClippingMask=="Sink1_mask.tif"){
+    nbuffer=as.integer(max(nx,ny)*0.1)
+  }else{
+    nbuffer=as.integer(max(nx,ny)*0.02)
+  }
+  
+  MaskRowmin=min(MaskLoc[,1])-nbuffer
+  MaskRowmax=max(MaskLoc[,1])+nbuffer
+  MaskColmin=min(MaskLoc[,2])-nbuffer
+  MaskColmax=max(MaskLoc[,2])+nbuffer
+  nx=MaskRowmax-MaskRowmin+1
+  ny=MaskColmax-MaskColmin+1
+  
+  channelmT=channelmT[MaskRowmin:MaskRowmax,MaskColmin:MaskColmax]
+  demT=demT[MaskRowmin:MaskRowmax,MaskColmin:MaskColmax]
+  # borderT=borderT[MaskRowmin:MaskRowmax,MaskColmin:MaskColmax]
+  LborderT=LborderT[MaskRowmin:MaskRowmax,MaskColmin:MaskColmax]
+  lakesT=lakesT[MaskRowmin:MaskRowmax,MaskColmin:MaskColmax]
+  maskT=maskT[MaskRowmin:MaskRowmax,MaskColmin:MaskColmax]
+  sinksT=sinksT[MaskRowmin:MaskRowmax,MaskColmin:MaskColmax]
+  bordertypeT=bordertypeT[MaskRowmin:MaskRowmax,MaskColmin:MaskColmax]
+  LakemaskT=LakemaskT[MaskRowmin:MaskRowmax,MaskColmin:MaskColmax]
+  SborderT=SborderT[MaskRowmin:MaskRowmax,MaskColmin:MaskColmax]
+
+	borderT=matrix(1, nrow=nx, ncol=ny)
+	borderT[2:(nx-1), 2:(ny-1)]= maskT[1:(nx-2), 2:(ny-1)] + maskT[3:nx, 2:(ny-1)] +
+							maskT[2:(nx-1), 1:(ny-2)] +
+							maskT[2:(nx-1), 3:ny]
+	borderT=borderT*maskT
+	borderT[which(borderT<4 & borderT!=0)]=1
+	borderT[borderT==4]=0
+	
+	#set output folder name
+  Maskname=gsub( ".tif", "", ClippingMask)
+  FolderName=paste(Maskname,".Str",riverorder,"Ep",ep,sep="")#run name for PF files
+}else{
+  FolderName=paste("Str",riverorder,"Ep",ep,sep="")#run name for PF files
+}
+
+
+```
+#3. Topographic processing
+```{r}
+##Add lakes and sinks to border
+AllBord=borderT+LborderT +SborderT
+Bord4Dir=bordertypeT+LborderT+SborderT+borderT
+
+## Put boundwary river cell in the queue
+init=InitQueue(demT, initmask=channelmT, border=AllBord)
+# init=InitQueue(demT, initmask=channelmT) 
+print(paste("initial queue", nrow(init$queue)))
+print(paste("Total Stream cells:", sum(channelmT)/10^6, "million"))
+
+##Traverse the stream network
+t0=proc.time()
+trav1 = StreamTraverse(dem=demT, mask=channelmT, queue=init$queue, marked=init$marked, basins=init$basins, printstep=F, epsilon=ep)
+t1=proc.time()
+print(paste("First Pass:", round(t0[3]-t1[3],1), "sec"))
+print(paste("First Pass:", round(sum(trav1$marked)/sum(channelmT)*100,1), " % cells processed"))
+
+##Look for orphaned branches and continue traversing until they are all connected
+norphan=1
+lap=1
+while(norphan>0){
+  t1=proc.time()
+  #look for orphan branches
+  RivBorder=borderT+LborderT +SborderT+trav1$marked #mask of marked rivers+boundaries+lakes+sinks
+  RivBorder[RivBorder>1]=1
+  orphan=FindOrphan(trav1$dem, mask=channelmT, marked=RivBorder)
+  norphan=orphan$norphan
+  print(paste("lap", lap, norphan, "orphans found"))
+  
+  #go around again if orphans are found
+  if(norphan>0){
+    trav2 = StreamTraverse(trav1$dem, mask=channelmT, queue=orphan$queue, marked=trav1$marked, basins=trav1$basins, step=trav1$step, direction=trav1$direction, printstep=F, epsilon=ep)
+    trav1=trav2
+    lap=lap+1
+    t2=proc.time()
+    print(paste("Lap", lap , round(t2[3]-t1[3],1), "sec"))
+  } else {
+    print("Done!  No orphan branches found")
+  }
+  
+}
+print(paste("Final pass:", round(sum(trav1$marked * channelmT)/sum(channelmT)*100,1), " % cells processed"))
+t3=proc.time()
+print(paste("Total Time:" , round(t3[3]-t0[3],1), "sec"))
+
+##Initialize the queue with every cell on the processed river and the boundary. 
+###River border equals to the traversed river plus domain border plus lake and sink border.
+RivBorder=borderT+trav1$marked+ LborderT + SborderT 
+
+###Initilize the updated river border.
+init=InitQueue(trav1$dem,  border=RivBorder)
+
+
+## Process all the cells outside the channel network
+t4=proc.time()
+travHS=D4TraverseB(trav1$dem, queue=init$queue, marked=init$marked, mask=LakemaskT, direction=trav1$direction, basins=trav1$basins, step=trav1$step, epsilon=ep, printstep=F, nchunk=1000) #adding lakes in the mask
+t5=proc.time()
+print(paste("Total Time:" , round(t5[3]-t4[3],1), "sec"))
+
+#Write output files except slope and area
+if (!dir.exists(FolderName)){
+  dir.create(FolderName)
+}
+setwd(FolderName)
+
+###Write out .tif files
+if (WriteTiff==T){
+  #Step
+  temprast=maskR
+  values(temprast)=t(travHS$step[, ny:1])
+  temprast=setMinMax(temprast)
+  fout=paste(FolderName, "_step.tif", sep="")
+  writeRaster(temprast, fout, format='GTiff', overwrite=T)
+  
+  #basins   
+  temprast=maskR
+  values(temprast)=t(travHS$basins[, ny:1])
+  temprast=setMinMax(temprast)
+  fout=paste(FolderName, "_basins.tif", sep="")
+  writeRaster(temprast, fout, format='GTiff', overwrite=T)
+  
+  #dem
+  temprast=maskR
+  values(temprast)=t(travHS$dem[, ny:1])
+  temprast=setMinMax(temprast)
+  fout=paste(FolderName, "_dem.tif", sep="")
+  writeRaster(temprast, fout, format='GTiff', overwrite=T)
+  
+  #marked
+  temprast=maskR
+  values(temprast)=t(travHS$marked[, ny:1])
+  temprast=setMinMax(temprast)
+  fout=paste(FolderName, "_marked.tif", sep="")
+  writeRaster(temprast, fout, format='GTiff', overwrite=T)
+  
+  #mask
+  temprast=maskR
+  values(temprast)=t(travHS$mask[, ny:1])
+  temprast=setMinMax(temprast)
+  fout=paste(FolderName, "_mask.tif", sep="")
+  writeRaster(temprast, fout, format='GTiff', overwrite=T)
+
+}
+    
+    
+  if (PlotFlag==T){
+    #step
+    fout=paste(FolderName, "_step.png", sep="")
+    figtemp=travHS$step
+    figtemp[figtemp==0]=NA
+    png(fout)
+    image.plot(figtemp)
+    dev.off()
+    
+    #basin
+    fout=paste(FolderName, "_basins.png", sep="")
+    figtemp=travHS$basins
+    figtemp[figtemp==0]=NA
+    png(fout)
+    image.plot(figtemp)
+    dev.off()
+    
+    #dem
+    fout=paste(FolderName, "_dem.png", sep="")
+    figtemp=travHS$dem
+    figtemp[figtemp==0]=NA
+    png(fout)
+    image.plot(figtemp,zlim=c(-10,4000))
+    dev.off()
+    
+    #marked
+    fout=paste(FolderName, "_marked.png", sep="")
+    figtemp=travHS$marked
+    figtemp[figtemp==0]=NA
+    png(fout)
+    image.plot(figtemp)
+    dev.off()
+    
+    #mask
+    fout=paste(FolderName, "_mask.png", sep="")
+    figtemp=travHS$mask
+    figtemp[figtemp==0]=NA
+    png(fout)
+    image.plot(figtemp)
+    dev.off()
+        if (!dir.exists("Figures")){
+      dir.create("Figures")
+    }
+    FigureList=list.files(".","\\.png$",full.names = T)
+    file.copy(FigureList,"./Figures", overwrite = T, recursive = F, copy.mode = T)
+    file.remove(FigureList,"./Figures", overwrite = T, recursive = F, copy.mode = T)
+    # file.move(FigureList,"./Figures", overwrite = T)
+  }
+
+
+###Write the files out in PF format
+if (WriteAscII==T){
+  #Change matrix in PF format
+  demPF=maskPF=basinPF=channelPF=rep(0, nx*ny)
+  jj=1
+  for(j in 1:ny){
+  	# print(j)
+  	for(i in 1:nx){
+  		demPF[jj]=travHS$dem[i,j]
+  		maskPF[jj]=travHS$mask[i,j]
+  		basinPF[jj]=travHS$basins[i,j]
+  		channelPF[jj]=channelmT[i,j]
+  		jj=jj+1
+  	}
+  }
+  
+  #Dem
+  fout=paste(FolderName, "_dem.sa", sep="")
+  write.table( t(c(nx,ny,1)), fout, append=F, row.names=F, col.names=F)
+  write.table(demPF, fout, append=T, row.names=F, col.names=F)
+  
+  #Mask
+  fout=paste(FolderName, "_mask.sa", sep="")
+  write.table( t(c(nx,ny,1)), fout, append=F, row.names=F, col.names=F)
+  write.table(maskPF, fout, append=T, row.names=F, col.names=F)
+  
+  #Basin
+  fout=paste(FolderName, "_basins.sa", sep="")
+  write.table( t(c(nx,ny,1)), fout, append=F, row.names=F, col.names=F)
+  write.table(basinPF, fout, append=T, row.names=F, col.names=F)
+  
+  #River mask
+  fout=paste(FolderName, "_RivMask.sa", sep="")
+  write.table( t(c(nx,ny,1)), fout, append=F, row.names=F, col.names=F)
+  write.table(channelPF, fout, append=T, row.names=F, col.names=F)
+}
+```
+#4. Calculate the slope and drainage area
+```{r}
+setwd(FolderName)
+
+for(maxi in 1:length(MaxSlope)){
+  MaxStem=MaxSlope[maxi]
+  for (mini in 1:length(MinSlope)){
+    MinStem=MinSlope[mini]
+    for(seci in 1:length(SecTH)){
+      SecTHtem=SecTH[seci]
+      for(upi in 1:length(UpwindFlag)){
+         Upwindtem=UpwindFlag[upi]
+          for (rivthi in 1:length(sub_th)){
+            sub_th_tem=sub_th[rivthi]
+        #Do a preliminary slope calc to fix the flow directions on the boundary. Use the border with two types for ocean and land.
+          
+          slopesUW=SlopeCalcUP(dem=travHS$dem, mask=LakemaskT, direction=travHS$direction, dx=dx, dy=dy,  secondaryTH=SecTHtem, borders=Bord4Dir, maxslope=MaxStem, minslope=MinStem, upflag=Upwindtem)
+          
+          # slopesUW=SlopeCalcUP(dem=DEM, mask=mask, direction=DIR, dx=dx, dy=dy,  secondaryTH=scale, maxslope=maxslope, minslope=minslope,  upflag=upwindflag)
+          
+      #Calcualte the drainage area with the fixed direction.
+      area=drainageArea(slopesUW$direction, printflag=F)
+      area[which(LakemaskT==0)]=0
+      
+      #########check if smooth flag is on#######
+      if (SmthFlag==T){
+          subbasin=CalcSubbasins(slopesUW$direction, mask=LakemaskT, area=area, riv_th=sub_th_tem, merge_th=mrg_th)
+          slopesUW=SlopeCalcUP(dem=travHS$dem, mask=LakemaskT, direction=slopesUW$direction, dx=dx, dy=dy,  secondaryTH=SecTHtem, borders=Bord4Dir, maxslope=MaxStem, minslope=MinStem,river_method=river_method,upflag=Upwindtem,rivermask=subbasin$RiverMask, subbasin=subbasin$subbasins)
+        }
+       
+      ## Write out slopes in PF format
+      
+      #Assign the output names
+      if (SecTHtem==-1){ 
+        SecTHName="NA"
+      }else{
+        SecTHName=SecTHtem
+      }
+      
+      if (Upwindtem==T){
+        UpName=".up"
+      }else
+      {
+        UpName=".stan"
+      }
+      
+      if (SmthFlag==T){
+        smthName=paste("_smth.rvth",sub_th_tem)
+        
+      }else{
+        smthName="_unsmth"
+      }
+        
+      
+      SlopeName=paste(FolderName,smthName,".mx",MaxStem,".mn",-log10(MinStem),".sec",SecTHName,UpName,sep="")
+      
+      if (WriteAscII==T){
+        #Change to PF format
+        dirPF=areaPF=slopex=slopey=rep(0, nx*ny)
+        jj=1
+        for(j in 1:ny){
+          # print(j)
+          for(i in 1:nx){
+            slopex[jj]=slopesUW$slopex[i,j]
+            slopey[jj]=slopesUW$slopey[i,j]
+            dirPF[jj]=slopesUW$direction[i,j]
+        		areaPF[jj]=area[i,j]
+            jj=jj+1
+          }
+        }
+        
+        #Check for flats
+        nflat=length(which(slopesUW$slopex==0 & slopesUW$slopey==0 & LakemaskT==1))
+        print(paste(nflat, "Flat cells found"))
+        
+        ###Write out .sa files
+        #Slopes
+        fout=paste(SlopeName, "_slopex.sa", sep="")
+        write.table( t(c(nx,ny,1)), fout, append=F, row.names=F, col.names=F)
+        write.table(slopex, fout, append=T, row.names=F, col.names=F)
+        fout=paste(SlopeName, "_slopey.sa", sep="")
+        write.table( t(c(nx,ny,1)), fout, append=F, row.names=F, col.names=F)
+        write.table(slopey, fout, append=T, row.names=F, col.names=F)
+        
+        #Direction
+        fout=paste(FolderName, "_direction.sa", sep="")
+        write.table( t(c(nx,ny,1)), fout, append=F, row.names=F, col.names=F)
+        write.table(dirPF, fout, append=T, row.names=F, col.names=F)
+        
+        #Area
+        fout=paste(FolderName, "_area.sa", sep="")
+        write.table( t(c(nx,ny,1)), fout, append=F, row.names=F, col.names=F)
+        write.table(areaPF, fout, append=T, row.names=F, col.names=F)
+      }
+      
+      ###Write out .tif files
+        #Direction
+
+      if (WriteTiff==T){
+        #direction
+        temprast=maskR
+        values(temprast)=t(slopesUW$direction[, ny:1])
+        temprast=setMinMax(temprast)
+        fout=paste(FolderName, "_direction.tif", sep="")
+        writeRaster(temprast, fout, format='GTiff', overwrite=T)
+        
+        #area
+        temprast=maskR
+        values(temprast)=t(area[, ny:1])
+        temprast=setMinMax(temprast)
+        fout=paste(FolderName, "_drainageArea.tif", sep="")
+        writeRaster(temprast, fout, format='GTiff', overwrite=T)
+        
+        #slopes
+        temprast=maskR
+        values(temprast)=t(slopesUW$slopex[, ny:1])
+        temprast=setMinMax(temprast)
+        fout=paste(SlopeName, "_slopex.tif", sep="")
+        writeRaster(temprast, fout, format='GTiff', overwrite=T)
+        
+        temprast=maskR
+        values(temprast)=t(slopesUW$slopey[, ny:1])
+        temprast=setMinMax(temprast)
+        fout=paste(SlopeName, "_slopey.tif", sep="")
+        writeRaster(temprast, fout, format='GTiff', overwrite=T)
+      }
+      
+      
+      if (PlotFlag==T){
+        #direction
+        fout=paste(FolderName, "_direction.png", sep="")
+        figtemp=slopesUW$direction
+        figtemp[figtemp==0]=NA
+        png(fout)
+        image.plot(figtemp)
+        dev.off()
+        
+        #area
+        fout=paste(FolderName, "_drainageArea.png", sep="")
+        figtemp=area
+        figtemp[figtemp==0]=NA
+        png(fout)
+        image.plot(figtemp,zlim=c(0,100))
+        dev.off()
+        
+        #slopes
+        fout=paste(FolderName, "_slopex.png", sep="")
+        figtemp=slopesUW$slopex
+        figtemp[figtemp==0]=NA
+        png(fout)
+        image.plot(figtemp,zlim=c(-0.3,0.3))
+        dev.off()
+        
+        fout=paste(FolderName, "_slopey.png", sep="")
+        figtemp=slopesUW$slopey
+        figtemp[figtemp==0]=NA
+        png(fout)
+        image.plot(figtemp,zlim=c(-0.3,0.3))
+        dev.off()
+        
+        if (!dir.exists("Figures")){
+          dir.create("Figures")
+        }
+        FigureList=list.files(".","\\.png$",full.names = T)
+        file.copy(FigureList,"./Figures", overwrite = T, recursive = F, copy.mode = T)
+        file.remove(FigureList,"./Figures", overwrite = T, recursive = F, copy.mode = T)
+      }
+
+      }#end smooth
+    }# end upwind
+    }# end sec
+  }#end min
+}#end max
+
+##Generate conversion tcl script for changing slopes.sa to .pfb and .silo
+# system(paste("cp File_Conversion.tcl",FolderName,sep=" "))
+# setwd(FolderName)
+# ConverTxt=readLines('File_Conversion.tcl')
+# 
+# SlopexName=paste(SlopeName, "_slopex", sep="")
+# SlopeyName=paste(SlopeName, "_slopey", sep="")
+# ConverTxt2=gsub("Inputnamex", SlopexName, ConverTxt)
+# ConverTxt2=gsub("Inputnamey", SlopeyName, ConverTxt2)
+# writeLines(ConverTxt2, con="File_Conversion2.tcl")
+```
+
+#5. Upload files to Avra if the upload flag is true
+```{r}
+if (UploadFlag==T){
+    system(paste('iput -K -P -b -r -T', FolderName, ' /iplant/home/shared/avra/CONUS2.0/Topography'), sep=" ")
+}
+```
